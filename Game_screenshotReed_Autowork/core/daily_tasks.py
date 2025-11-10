@@ -114,7 +114,9 @@ class Dailytasks:
         characterupgradepagecheak_template_path  = os.path.join(os.path.dirname(__file__), "../templates/character/upgrade.png")
         characterupgradepagecheak_detector = IconDetector(characterupgradepagecheak_template_path)
 
-
+        #任务领奖界面检测
+        taskpagecheak_template_path  = os.path.join(os.path.dirname(__file__), "../templates/task/taskpagecheak.png")
+        taskpagecheak_detector = IconDetector(taskpagecheak_template_path)
 
         def Back2maintitle():
             tapscreen_tool.tap_screen(66, 37)
@@ -387,6 +389,38 @@ class Dailytasks:
 
 
         #领取奖励
+        print("开始领取奖励")
+        tapscreen_tool.tap_screen(955, 119)
+        time.sleep(3)
+        screenshot1 = screenshot_tool.capture()
+        (x12, y12), conf2 = taskpagecheak_detector.find_icon(screenshot1)
+        while x12 is None:
+            tapscreen_tool.tap_screen(955, 119)
+            time.sleep(1)
+            screenshot1 = screenshot_tool.capture()
+            (x12, y12), conf2 = taskpagecheak_detector.find_icon(screenshot1)
+        print("已进入任务界面")
+
+
+        tapscreen_tool.tap_screen(1125, 591)
+        time.sleep(1)
+        tapscreen_tool.tap_screen(1125, 591)
+        time.sleep(1)
+        tapscreen_tool.tap_screen(1125, 591)
+        time.sleep(1)
+        tapscreen_tool.tap_screen(1142, 65)
+        time.sleep(1)
+        tapscreen_tool.tap_screen(1142, 65)
+        time.sleep(1)
+        tapscreen_tool.tap_screen(1142, 65)
+        time.sleep(1)
+        tapscreen_tool.tap_screen(1142, 65)
+
+        Back2maintitle()
+        time.sleep(2)
+        print("领取奖励完成")
+
+        print("日常任务全部完成!")
         
 
 
