@@ -33,6 +33,12 @@
               <button class="primary-btn" @click="startUnifiedTasks" :disabled="taskStatus.running || !hasSelectedTasks">
                 {{ taskStatus.running ? '执行中...' : '开始执行' }}
               </button>
+              <button class="secondary-btn" v-if="taskStatus.canPause" @click="pauseTask">
+                暂停
+              </button>
+              <button class="secondary-btn" v-if="taskStatus.canResume" @click="resumeTask">
+                继续
+              </button>
               <button class="danger-btn" v-if="taskStatus.canStop" @click="stopTask">
                 停止
               </button>
@@ -103,9 +109,8 @@ export default {
       },
       savingSettings: false,
       configStatus: '',
-      configStatusType: 'info'
-      ,
-  taskStatus: { state: 'idle', task: null, running: false, canStop: false }
+      configStatusType: 'info',
+      taskStatus: { state: 'idle', task: null, running: false, canStop: false, canPause: false, canResume: false }
     }
   },
   computed: {
@@ -114,7 +119,7 @@ export default {
     },
     statusLine() {
       const s = this.taskStatus
-      if (s.running) {
+      if (s.running && s.state !== 'paused') {
         if (s.task === 'combo') return '组合任务执行中'
         if (s.task === 'start_game') return '启动游戏中'
         if (s.task === 'dailytasks') return '日常任务执行中'
@@ -122,6 +127,7 @@ export default {
       switch (s.state) {
         case 'finished': return '任务已完成'
         case 'stopped': return '已停止'
+        case 'paused': return '已暂停'
         case 'idle': default: return '空闲'
       }
     }
@@ -192,6 +198,26 @@ export default {
       }
     },
 
+    async pauseTask() {
+      try {
+        const res = await fetch(this.apiUrl('/task/pause'), { method: 'POST' })
+        const data = await res.json()
+        if (!data.ok) this.statusText = data.error || '暂停失败'
+      } catch (e) {
+        this.statusText = `暂停失败: ${e.message}`
+      }
+    },
+
+    async resumeTask() {
+      try {
+        const res = await fetch(this.apiUrl('/task/resume'), { method: 'POST' })
+        const data = await res.json()
+        if (!data.ok) this.statusText = data.error || '恢复失败'
+      } catch (e) {
+        this.statusText = `恢复失败: ${e.message}`
+      }
+    },
+
 
     startPolling() {
       if (this._poller) return
@@ -252,7 +278,7 @@ export default {
         const data = await res.json()
         if (!res.ok || !data.ok) {
           throw new Error(data.error || '无法获取配置')
-        }
+        } 
         this.settings.adb_path = data.config?.adb_path || ''
         this.configStatus = ''
       } catch (e) {
@@ -404,6 +430,20 @@ body {
 .primary-btn:disabled {
   background: rgba(168, 107, 255, 0.4);
   cursor: not-allowed;
+}
+
+.secondary-btn {
+  padding: 0.55rem 1.4rem;
+  background: #6b8aff;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.secondary-btn:hover:not(:disabled) {
+  background: #5879ef;
 }
 
 .danger-btn {

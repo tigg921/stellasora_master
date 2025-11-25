@@ -141,7 +141,11 @@ class Dailytasks:
             print("返回主界面完成")
             if not _sleep(2): return False
             return True
+
+
         # ================== 开始执行日常任务各步骤 ==================
+
+        
         # 主页面角色互动
         tapscreen_tool.tap_screen(646, 409)
         if not _sleep(3): return

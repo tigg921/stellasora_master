@@ -11,7 +11,7 @@ import numpy as np
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent
-# Ensure project root is on sys.path so `import core` works when launching from webapp/
+# 确保项目根目录在 sys.path 中，以便从 webapp 启动时能成功导入 `core`
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from core import MumuScreenshot, Tapscreen, Autorecruitment, StartGame, IconDetector, Dailytasks
@@ -20,7 +20,7 @@ from core.config import get_config, update_config
 
 app = Flask(__name__, static_folder=str(BASE_DIR / 'static'), static_url_path='', template_folder=str(BASE_DIR / 'templates'))
 
-# Instantiate core tools (reuse existing logic)
+# 实例化核心工具（复用已有逻辑）
 TEMPLATE_PATH = os.path.normpath(str(PROJECT_ROOT / 'templates' / 'button_template.png'))
 try:
     detector = IconDetector(TEMPLATE_PATH)
@@ -33,22 +33,34 @@ autorecruit_tool = Autorecruitment()
 startgame_tool = StartGame()
 dailytasks_tool = Dailytasks()
 
-"""任务控制：仅支持启动 / 停止。"""
+"""任务控制：支持启动 / 停止 / 暂停 / 恢复。"""
 _task_stop_event: Event | None = None
+_task_pause_event: Event | None = None
 _task_thread: Thread | None = None
 _task_lock = Lock()
-_task_state = 'idle'  # idle | running | stopped | finished
+_task_state = 'idle'  # idle | running | paused | stopped | finished
 _task_name = None
 
 def _interruptible_sleep(seconds: float, stop_event: Event | None) -> bool:
-    """按切片睡眠；支持停止。"""
+    """按切片睡眠；支持停止和暂停。"""
     if seconds <= 0:
         return not (stop_event and stop_event.is_set())
     end = time.time() + seconds
     while time.time() < end:
         if stop_event and stop_event.is_set():
             return False
+        
+        # 处理暂停：如果 _task_pause_event 被 clear，则 wait() 会阻塞，直到被 set()
+        if _task_pause_event:
+            _task_pause_event.wait()
+        
+        # 暂停恢复后再次检查停止信号
+        if stop_event and stop_event.is_set():
+            return False
+
         remaining = end - time.time()
+        if remaining <= 0:
+            break
         time.sleep(min(0.2, remaining))
     return True
 
@@ -91,11 +103,11 @@ def _run_task(task_type: str, stop_event: Event):
         _task_state = 'stopped'
     finally:
         with _task_lock:
-            pass  # placeholder if we later track more
+            pass  # 占位（以后如果需要跟踪更多状态可在此处扩展）
 
 @app.route('/task/start', methods=['POST'])
 def task_start():
-    global _task_thread, _task_stop_event, _task_state, _task_name
+    global _task_thread, _task_stop_event, _task_pause_event, _task_state, _task_name
     data = request.get_json(silent=True) or {}
     task_type = data.get('type')
     if task_type not in ('start_game','dailytasks','combo','debug_sleep','debug_loop'):
@@ -104,6 +116,8 @@ def task_start():
         if _task_thread and _task_thread.is_alive():
             return jsonify({'ok': False, 'error': '已有任务在执行'}), 409
         _task_stop_event = Event()
+        _task_pause_event = Event()
+        _task_pause_event.set()  # 初始状态为运行（非暂停）
         _task_state = 'running'
         _task_name = task_type
         _task_thread = Thread(target=_run_task, args=(task_type, _task_stop_event), daemon=True)
@@ -112,13 +126,43 @@ def task_start():
 
 @app.route('/task/stop', methods=['POST'])
 def task_stop():
-    global _task_stop_event, _task_state
+    global _task_stop_event, _task_state, _task_pause_event
     with _task_lock:
-        if not _task_stop_event or _task_state not in ('running'):
-            return jsonify({'ok': False, 'error': '没有运行中的任务'}), 400
-        _task_stop_event.set()
+        if not _task_stop_event or _task_state in ('idle', 'finished', 'stopped'):
+             # 允许重复停止，但不报错
+             pass
+        
+        # 确保暂停的任务能解除阻塞并退出
+        if _task_pause_event:
+            _task_pause_event.set()
+            
+        if _task_stop_event:
+            _task_stop_event.set()
+            
         _task_state = 'stopped'
     return jsonify({'ok': True, 'message': '停止信号已发送'})
+
+@app.route('/task/pause', methods=['POST'])
+def task_pause():
+    global _task_pause_event, _task_state
+    with _task_lock:
+        if not _task_thread or not _task_thread.is_alive():
+            return jsonify({'ok': False, 'error': '没有运行中的任务'}), 400
+        if _task_pause_event:
+            _task_pause_event.clear() # 设置为 False，阻塞 wait()
+            _task_state = 'paused'
+    return jsonify({'ok': True, 'message': '任务已暂停'})
+
+@app.route('/task/resume', methods=['POST'])
+def task_resume():
+    global _task_pause_event, _task_state
+    with _task_lock:
+        if not _task_thread or not _task_thread.is_alive():
+            return jsonify({'ok': False, 'error': '没有运行中的任务'}), 400
+        if _task_pause_event:
+            _task_pause_event.set() # 设置为 True，解除 wait()
+            _task_state = 'running'
+    return jsonify({'ok': True, 'message': '任务已恢复'})
 
 
 @app.route('/task/status')
@@ -129,7 +173,9 @@ def task_status():
         'state': _task_state,
         'task': _task_name,
         'running': running,
-        'canStop': running
+        'canStop': running,
+        'canPause': running and _task_state == 'running',
+        'canResume': running and _task_state == 'paused'
     }})
 
 
@@ -184,9 +230,9 @@ builtins.print = _hooked_print
 
 @app.route('/logs')
 def get_logs():
-    """Return logs after `since` index (query param).
-    Example: /logs?since=42
-    Returns JSON: { ok: True, logs: [...], last: <last_idx> }
+    """返回自给定日志索引之后的日志（通过查询参数 `since` 指定）。
+    示例：/logs?since=42
+    返回 JSON: { ok: True, logs: [...], last: <last_idx> }
     """
     try:
         since = request.args.get('since', default=0, type=int)
@@ -200,11 +246,11 @@ def get_logs():
 
 @app.route('/')
 def index():
-    # If a built frontend exists at static/index.html (after `npm run build`), serve it.
+    # 如果存在构建后的前端文件 static/index.html（例如执行 `npm run build` 后），则直接返回该静态文件。
     static_index = BASE_DIR / 'static' / 'index.html'
     if static_index.exists():
         return send_file(str(static_index))
-    # Otherwise fall back to the template (development or CDN-based)
+    # 否则回退到模板渲染（用于开发或通过 CDN 加载前端资源的情况）
     return render_template('index.html')
 
 
@@ -253,6 +299,6 @@ def config_endpoint():
 
 
 if __name__ == '__main__':
-    # Run on localhost:5000
+    # 在本地运行，监听 127.0.0.1:5000
     app.run(host='127.0.0.1', port=5000, debug=True, threaded=True)
 
