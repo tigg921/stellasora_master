@@ -89,7 +89,7 @@
           id="adbPath"
           type="text"
           v-model="settings.adb_path"
-          placeholder="例如 D:\\Program Files\\Netease\\MuMu Player 12\\shell\\adb.exe"
+          placeholder="例如 D:\Program Files\Netease\MuMu Player 12\shell\adb.exe"
         />
         <p class="hint">可填写绝对路径或相对于 exe 所在目录的相对路径。</p>
 
@@ -194,6 +194,7 @@ export default {
     },
 
     taskTypeSelected() {
+      if (this.tasks.dailytasks && this.tasks.towerClimbing) return 'daily_and_tower'
       if (this.tasks.towerClimbing) return 'tower_climbing'
       if (this.tasks.startGame && this.tasks.dailytasks) return 'combo'
       if (this.tasks.startGame) return 'start_game'
@@ -206,7 +207,7 @@ export default {
       if (!type) return
       try {
         const payload = { type }
-        if (type === 'tower_climbing') {
+        if (type === 'tower_climbing' || type === 'daily_and_tower') {
           payload.attribute_type = this.towerAttribute
           payload.max_runs = this.towerMaxRuns
         }

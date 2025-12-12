@@ -2,11 +2,16 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from threading import Lock
 from typing import Any, Dict
 
-CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.json"
+if getattr(sys, 'frozen', False):
+    CONFIG_PATH = Path(sys.executable).parent / "config.json"
+else:
+    CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.json"
+
 DEFAULT_CONFIG: Dict[str, Any] = {
     "adb_path": "",
     "default_instance": 1,

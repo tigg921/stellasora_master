@@ -83,6 +83,16 @@ def _run_task(task_type: str, stop_event: Event, **kwargs):
             startgame_tool.run(stop_event=stop_event, sleep_fn=_interruptible_sleep)
             if not stop_event.is_set():
                 dailytasks_tool.run(stop_event=stop_event, sleep_fn=_interruptible_sleep)
+        elif task_type == 'daily_and_tower':
+            dailytasks_tool.run(stop_event=stop_event, sleep_fn=_interruptible_sleep)
+            if not stop_event.is_set():
+                towerclimber_tool.run(
+                    attribute_type=kwargs.get('attribute_type'),
+                    max_runs=kwargs.get('max_runs', 0),
+                    stop_on_weekly=kwargs.get('stop_on_weekly', False),
+                    stop_event=stop_event,
+                    sleep_fn=_interruptible_sleep
+                )
         elif task_type == 'debug_sleep':
             print('进入 debug_sleep 任务 (用于本地暂停/恢复测试)')
             for i in range(300):  # ~150秒，更易测试暂停/恢复
@@ -122,7 +132,7 @@ def task_start():
     max_runs = data.get('max_runs', 0)
     print(f"收到任务启动请求: type={task_type}, attribute={attribute_type}, max_runs={max_runs}")
 
-    if task_type not in ('start_game','dailytasks','combo','debug_sleep','debug_loop', 'tower_climbing'):
+    if task_type not in ('start_game','dailytasks','combo','debug_sleep','debug_loop', 'tower_climbing', 'daily_and_tower'):
         return jsonify({'ok': False, 'error': '未知任务类型'}), 400
     with _task_lock:
         if _task_thread and _task_thread.is_alive():
@@ -134,7 +144,7 @@ def task_start():
         _task_name = task_type
         
         kwargs = {}
-        if task_type == 'tower_climbing':
+        if task_type in ('tower_climbing', 'daily_and_tower'):
             kwargs['attribute_type'] = attribute_type
             kwargs['max_runs'] = max_runs
             # 默认开启周常检测
